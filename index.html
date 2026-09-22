@@ -220,8 +220,7 @@ function applyFilter() {
   const rows = RAW.rows.filter(r => (filter.cat < 0 || r[1] === filter.cat) && (filter.booth < 0 || r[0] === filter.booth));
   D = aggregate(rows);
   const parts = []; if (filter.cat >= 0) parts.push(catName(filter.cat)); if (filter.booth >= 0) parts.push(DIMS.booths[filter.booth].name);
-  const competitionTotal = BOARDGAME_UNIQUE.male.reduce((a, v) => a + v, 0) + BOARDGAME_UNIQUE.female.reduce((a, v) => a + v, 0);
-  document.getElementById('filterChip').textContent = isBoardgameCompetition() ? `보드게임 대회 — ${fmt(competitionTotal)}명` : parts.length ? parts.join(' · ') + ` — ${fmt(D.total)}건` : `전체 ${fmt(D.total)}건`;
+  document.getElementById('filterChip').textContent = isBoardgameCompetition() ? `보드게임 대회 — ${fmt(boardgameCompetitionTotal())}명` : parts.length ? parts.join(' · ') + ` — ${fmt(D.total)}건` : `전체 ${fmt(overallParticipationTotal())}건`;
   document.getElementById('clearBtn').hidden = !parts.length;
   renderKpis();
 }
@@ -236,6 +235,10 @@ const BOARDGAME_UNIQUE = {
 const BOARDGAME_COMPETITION_CAT = DIMS.cats.length;
 const catName = (i) => i === BOARDGAME_COMPETITION_CAT ? '보드게임 대회' : DIMS.cats[i];
 const isBoardgameCompetition = () => filter.cat === BOARDGAME_COMPETITION_CAT;
+const isOverall = () => filter.cat < 0 && filter.booth < 0;
+const boardgameCompetitionTotal = () => BOARDGAME_UNIQUE.male.reduce((a, v) => a + v, 0) + BOARDGAME_UNIQUE.female.reduce((a, v) => a + v, 0);
+const overallParticipationTotal = () => D.total + (isOverall() ? boardgameCompetitionTotal() : 0);
+const overallUniqueTotal = () => D.unique + (isOverall() ? boardgameCompetitionTotal() : 0);
 const VIEWS = [
   { grp: '부스 상세' },
   { id: 'boothDetail', title: '부스 상세', desc: '시간대별·연령별·성별 참여를 한 화면에. 아래에서 부스를 고르면 그 부스만, 전체를 고르면 모든 부스 합계를 보여줍니다.', render: renderBoothDetail },
@@ -402,7 +405,8 @@ function renderBoothDetail(area) {
   const top = [...D.ages].sort((x, y) => y.count - x.count)[0];
   const gsum = D.genderByGroup.values.reduce((a, r) => [a[0] + r[0], a[1] + r[1]], [0, 0]);
   const head = b ? `${b.name} · ${b.cat} · 대상 ${b.target}` : (filter.cat >= 0 ? `${DIMS.cats[filter.cat]} 전체 부스` : '전체 부스');
-  return { note: `${head} — ${fmt(D.total)}건, ${fmt(D.unique)}명. 피크 ${DIMS.slots[peak]} (${totals[peak]}건), 최다 연령 ${top.name} (${top.count}건), 남 ${gsum[0]} / 여 ${gsum[1]}`,
+  const overallNote = isOverall() ? ` (보드게임 대회 ${fmt(boardgameCompetitionTotal())}건·명 포함)` : '';
+  return { note: `${head} — ${fmt(overallParticipationTotal())}건, ${fmt(overallUniqueTotal())}명${overallNote}. 피크 ${DIMS.slots[peak]} (${totals[peak]}건), 최다 연령 ${top.name} (${top.count}건), 남 ${gsum[0]} / 여 ${gsum[1]}`,
            table: table(['구분', '항목', '참여 건수'], [...DIMS.slots.map((s, i) => ['시간대', s, totals[i]]).filter(r => r[2] > 0), ...D.ages.map(a => ['연령', a.name, a.count]).filter(r => r[2] > 0)]) };
 }
 
@@ -412,7 +416,7 @@ function show(id) {
   const competition = isBoardgameCompetition();
   document.querySelectorAll('#nav button').forEach(b => b.setAttribute('aria-current', !competition && b.dataset.id === id ? 'true' : 'false'));
   document.querySelector('.filters').hidden = false;
-  document.getElementById('src').textContent = competition ? '자료: 보드게임 대회 고유 참가자 집계' : `자료: ${RAW.meta.source}`;
+  document.getElementById('src').textContent = competition ? '자료: 보드게임 대회 고유 참가자 집계' : isOverall() ? `자료: ${RAW.meta.source} + 보드게임 대회 고유 참가자 집계` : `자료: ${RAW.meta.source}`;
   renderKpis();
   const suffix = competition ? '' : filter.booth >= 0 && current.id !== 'boothDetail' ? ` — ${DIMS.booths[filter.booth].name}` : filter.cat >= 0 ? ` — ${catName(filter.cat)}` : '';
   document.getElementById('ptitle').textContent = competition ? '보드게임 대회' : current.title + suffix;
@@ -435,7 +439,7 @@ function renderKpis() {
     const male = BOARDGAME_UNIQUE.male.reduce((a, v) => a + v, 0), female = BOARDGAME_UNIQUE.female.reduce((a, v) => a + v, 0);
     k = [['고유 참가자', fmt(male + female), '명'], ['남', fmt(male), '명'], ['여', fmt(female), '명'], ['학년', BOARDGAME_UNIQUE.grades.length, '개']];
   } else {
-    k = [['참여 건수', fmt(D.total), '건'], ['고유 참가자', fmt(D.unique), '명'], ['부스', D.boothsActive, '곳']];
+    k = [['참여 건수', fmt(overallParticipationTotal()), '건'], ['고유 참가자', fmt(overallUniqueTotal()), '명'], ['부스', D.boothsActive, '곳']];
     if (filter.cat < 0 && filter.booth < 0) k.splice(2, 0, ['가족(연락처) 수', fmt(RAW.meta.families), '가족']);
   }
   document.getElementById('kpis').innerHTML = k.map(([l, v, u]) => `<div class="kpi"><div class="l">${l}</div><div class="v">${v}<small>${u}</small></div></div>`).join('');
