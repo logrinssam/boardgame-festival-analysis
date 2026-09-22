@@ -128,10 +128,10 @@ table.data th { color: var(--muted); font-weight: 500; font-size: 12px; }
   </div>
 
   <div class="kpi-adjust" id="kpiAdjust" hidden>
-    <span>보드게임 대회 수치</span>
-    <span class="seg" role="group" aria-label="보드게임 대회 수치 반영 여부">
-      <button type="button" data-include="false" aria-pressed="true">미반영</button>
-      <button type="button" data-include="true" aria-pressed="false">반영</button>
+    <span>초코 수치</span>
+    <span class="seg" role="group" aria-label="초코 수치 반영 여부">
+      <button type="button" data-include="false" aria-pressed="true">초코 미반영</button>
+      <button type="button" data-include="true" aria-pressed="false">초코 반영</button>
     </span>
   </div>
   <section class="kpis" id="kpis" aria-label="핵심 지표"></section>
@@ -251,7 +251,8 @@ const catName = (i) => i === BOARDGAME_COMPETITION_CAT ? '보드게임 대회' :
 const isBoardgameCompetition = () => filter.cat === BOARDGAME_COMPETITION_CAT;
 const isOverall = () => filter.cat < 0 && filter.booth < 0;
 const boardgameCompetitionTotal = () => BOARDGAME_UNIQUE.male.reduce((a, v) => a + v, 0) + BOARDGAME_UNIQUE.female.reduce((a, v) => a + v, 0);
-let includeCompetitionInKpis = false;
+const CHOCO_PARTICIPATION = 2000;
+let includeChocoInKpis = false;
 const VIEWS = [
   { grp: '부스 상세' },
   { id: 'boothDetail', title: '부스 상세', desc: '시간대별·연령별·성별 참여를 한 화면에. 아래에서 부스를 고르면 그 부스만, 전체를 고르면 모든 부스 합계를 보여줍니다.', render: renderBoothDetail },
@@ -449,13 +450,13 @@ function renderKpis() {
   let k;
   const adjust = document.getElementById('kpiAdjust');
   adjust.hidden = !isOverall() || isBoardgameCompetition();
-  adjust.querySelectorAll('button').forEach(b => b.setAttribute('aria-pressed', String((b.dataset.include === 'true') === includeCompetitionInKpis)));
+  adjust.querySelectorAll('button').forEach(b => b.setAttribute('aria-pressed', String((b.dataset.include === 'true') === includeChocoInKpis)));
   if (isBoardgameCompetition()) {
     const male = BOARDGAME_UNIQUE.male.reduce((a, v) => a + v, 0), female = BOARDGAME_UNIQUE.female.reduce((a, v) => a + v, 0);
     k = [['고유 참가자', fmt(male + female), '명'], ['남', fmt(male), '명'], ['여', fmt(female), '명'], ['학년', BOARDGAME_UNIQUE.grades.length, '개']];
   } else {
-    const extra = isOverall() && includeCompetitionInKpis ? boardgameCompetitionTotal() : 0;
-    k = [['참여 건수', fmt(D.total + extra), '건'], ['고유 참가자', fmt(D.unique + extra), '명'], ['부스', D.boothsActive, '곳']];
+    const extra = isOverall() && includeChocoInKpis ? CHOCO_PARTICIPATION : 0;
+    k = [['참여 건수', fmt(D.total + extra), '건'], ['고유 참가자', fmt(D.unique), '명'], ['부스', D.boothsActive, '곳']];
     if (filter.cat < 0 && filter.booth < 0) k.splice(2, 0, ['가족(연락처) 수', fmt(RAW.meta.families), '가족']);
   }
   document.getElementById('kpis').innerHTML = k.map(([l, v, u]) => `<div class="kpi"><div class="l">${l}</div><div class="v">${v}<small>${u}</small></div></div>`).join('');
@@ -492,12 +493,12 @@ function init() {
   document.getElementById('btnPng').addEventListener('click', savePng);
   document.getElementById('kpiAdjust').addEventListener('click', e => {
     const b = e.target.closest('button'); if (!b) return;
-    includeCompetitionInKpis = b.dataset.include === 'true';
-    try { localStorage.setItem('bgf-include-competition', String(includeCompetitionInKpis)); } catch (e) {}
+    includeChocoInKpis = b.dataset.include === 'true';
+    try { localStorage.setItem('bgf-include-choco', String(includeChocoInKpis)); } catch (e) {}
     renderKpis();
   });
   let first = 'boothDetail', f = {}; try { first = localStorage.getItem('bgf-view') || 'boothDetail'; f = JSON.parse(localStorage.getItem('bgf-filter') || '{}'); } catch (e) {}
-  try { includeCompetitionInKpis = localStorage.getItem('bgf-include-competition') === 'true'; } catch (e) {}
+  try { includeChocoInKpis = localStorage.getItem('bgf-include-choco') === 'true'; } catch (e) {}
   Object.assign(filter, { cat: Number.isInteger(f.cat) && f.cat <= BOARDGAME_COMPETITION_CAT ? f.cat : -1, booth: Number.isInteger(f.booth) && f.booth < DIMS.booths.length ? f.booth : -1 });
   current = VIEWS.find(v => v.id === first && v.id) || VIEWS[1];
   setFilter({});
