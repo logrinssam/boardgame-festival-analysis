@@ -219,12 +219,13 @@ function aggregate(rows) {
 function applyFilter() {
   const rows = RAW.rows.filter(r => (filter.cat < 0 || r[1] === filter.cat) && (filter.booth < 0 || r[0] === filter.booth));
   D = aggregate(rows);
-  const parts = []; if (filter.cat >= 0) parts.push(DIMS.cats[filter.cat]); if (filter.booth >= 0) parts.push(DIMS.booths[filter.booth].name);
-  document.getElementById('filterChip').textContent = parts.length ? parts.join(' · ') + ` — ${fmt(D.total)}건` : `전체 ${fmt(D.total)}건`;
+  const parts = []; if (filter.cat >= 0) parts.push(catName(filter.cat)); if (filter.booth >= 0) parts.push(DIMS.booths[filter.booth].name);
+  const competitionTotal = BOARDGAME_UNIQUE.male.reduce((a, v) => a + v, 0) + BOARDGAME_UNIQUE.female.reduce((a, v) => a + v, 0);
+  document.getElementById('filterChip').textContent = isBoardgameCompetition() ? `보드게임 대회 — ${fmt(competitionTotal)}명` : parts.length ? parts.join(' · ') + ` — ${fmt(D.total)}건` : `전체 ${fmt(D.total)}건`;
   document.getElementById('clearBtn').hidden = !parts.length;
   renderKpis();
 }
-function filterLabel() { const p = []; if (filter.cat >= 0) p.push(DIMS.cats[filter.cat]); if (filter.booth >= 0) p.push(DIMS.booths[filter.booth].name); return p.length ? ` · ${p.join(' · ')}` : ''; }
+function filterLabel() { const p = []; if (filter.cat >= 0) p.push(catName(filter.cat)); if (filter.booth >= 0) p.push(DIMS.booths[filter.booth].name); return p.length ? ` · ${p.join(' · ')}` : ''; }
 
 /* ---------- 뷰 정의 ---------- */
 const BOARDGAME_UNIQUE = {
@@ -232,11 +233,12 @@ const BOARDGAME_UNIQUE = {
   male: [18, 14, 14, 14, 15, 11],
   female: [11, 13, 6, 12, 13, 4],
 };
+const BOARDGAME_COMPETITION_CAT = DIMS.cats.length;
+const catName = (i) => i === BOARDGAME_COMPETITION_CAT ? '보드게임 대회' : DIMS.cats[i];
+const isBoardgameCompetition = () => filter.cat === BOARDGAME_COMPETITION_CAT;
 const VIEWS = [
   { grp: '부스 상세' },
   { id: 'boothDetail', title: '부스 상세', desc: '시간대별·연령별·성별 참여를 한 화면에. 아래에서 부스를 고르면 그 부스만, 전체를 고르면 모든 부스 합계를 보여줍니다.', render: renderBoothDetail },
-  { grp: '보드게임' },
-  { id: 'boardgameUnique', title: '보드게임', desc: '학년별·성별 고유 참가자 수. 동일 참가자는 한 명으로 계산하며, 상단의 부스 필터와는 별도 집계입니다.', standalone: true, render: renderBoardgameUnique },
   { grp: '기본 현황' },
   { id: 'slot', title: '시간대별 참여 건수', desc: '참여한 시간 기준, 30분 단위. 예약은 체험 시간, 현장 등록은 부스 등록 시각. 운영 전·점심시간(12~13시)에 미리 등록한 경우는 09:00·13:00으로 셈.',
     opts: [['stack', '누적 (현장/예약)'], ['total', '합계만']], render: renderSlot },
@@ -407,20 +409,21 @@ function renderBoothDetail(area) {
 /* ---------- 조립 ---------- */
 function show(id) {
   current = VIEWS.find(v => v.id === id); killCharts();
-  document.querySelectorAll('#nav button').forEach(b => b.setAttribute('aria-current', b.dataset.id === id ? 'true' : 'false'));
-  document.querySelector('.filters').hidden = !!current.standalone;
-  document.getElementById('src').textContent = current.standalone ? '자료: 보드게임 고유 참가자 집계' : `자료: ${RAW.meta.source}`;
+  const competition = isBoardgameCompetition();
+  document.querySelectorAll('#nav button').forEach(b => b.setAttribute('aria-current', !competition && b.dataset.id === id ? 'true' : 'false'));
+  document.querySelector('.filters').hidden = false;
+  document.getElementById('src').textContent = competition ? '자료: 보드게임 대회 고유 참가자 집계' : `자료: ${RAW.meta.source}`;
   renderKpis();
-  const suffix = current.standalone ? '' : filter.booth >= 0 && current.id !== 'boothDetail' ? ` — ${DIMS.booths[filter.booth].name}` : filter.cat >= 0 ? ` — ${DIMS.cats[filter.cat]}` : '';
-  document.getElementById('ptitle').textContent = current.title + suffix;
-  document.getElementById('pdesc').textContent = current.desc;
+  const suffix = competition ? '' : filter.booth >= 0 && current.id !== 'boothDetail' ? ` — ${DIMS.booths[filter.booth].name}` : filter.cat >= 0 ? ` — ${catName(filter.cat)}` : '';
+  document.getElementById('ptitle').textContent = competition ? '보드게임 대회' : current.title + suffix;
+  document.getElementById('pdesc').textContent = competition ? '학년별·성별 고유 참가자 수. 동일 참가자는 한 명으로 계산합니다.' : current.desc;
   const o = document.getElementById('opts'); o.innerHTML = '';
-  if (current.opts) { if (!opt[id]) opt[id] = current.opts[0][0];
+  if (!competition && current.opts) { if (!opt[id]) opt[id] = current.opts[0][0];
     current.opts.forEach(([k, l]) => { o.insertAdjacentHTML('beforeend', `<label><input type="radio" name="opt-${id}" id="opt-${id}-${k}" value="${k}" ${opt[id] === k ? 'checked' : ''}>${l}</label>`); });
     o.querySelectorAll('input').forEach(i => i.addEventListener('change', () => { opt[id] = i.value; show(id); })); }
   const area = document.getElementById('chartArea'); area.innerHTML = '';
   let r;
-  try { r = current.standalone || D.total ? current.render(area) : empty(area, '해당 조건에 데이터가 없습니다.'); }
+  try { r = competition ? renderBoardgameUnique(area) : D.total ? current.render(area) : empty(area, '해당 조건에 데이터가 없습니다.'); }
   catch (e) { r = empty(area, '차트를 그리지 못했습니다: ' + (e && e.message || e) + ' — 새로고침하거나 표 보기를 이용하세요.'); }
   document.getElementById('pnote').textContent = r.note || '';
   const tw = document.getElementById('tablewrap'); tw.innerHTML = r.table || ''; tw.hidden = !tableOn;
@@ -428,7 +431,7 @@ function show(id) {
 }
 function renderKpis() {
   let k;
-  if (current && current.id === 'boardgameUnique') {
+  if (isBoardgameCompetition()) {
     const male = BOARDGAME_UNIQUE.male.reduce((a, v) => a + v, 0), female = BOARDGAME_UNIQUE.female.reduce((a, v) => a + v, 0);
     k = [['고유 참가자', fmt(male + female), '명'], ['남', fmt(male), '명'], ['여', fmt(female), '명'], ['학년', BOARDGAME_UNIQUE.grades.length, '개']];
   } else {
@@ -441,9 +444,12 @@ function setFilter(patch) {
   Object.assign(filter, patch);
   const sel = document.getElementById('boothSel');
   // 분류를 바꾸면 그 분류에 없는 부스는 선택 해제하고, 목록에서도 숨김
+  if (isBoardgameCompetition()) filter.booth = -1;
   if (filter.booth >= 0 && filter.cat >= 0 && DIMS.cats.indexOf(DIMS.booths[filter.booth].cat) !== filter.cat) filter.booth = -1;
-  [...sel.options].forEach(o => { const i = Number(o.value); o.hidden = i >= 0 && filter.cat >= 0 && DIMS.cats.indexOf(DIMS.booths[i].cat) !== filter.cat; });
+  [...sel.options].forEach(o => { const i = Number(o.value); o.hidden = i >= 0 && (isBoardgameCompetition() || filter.cat >= 0 && DIMS.cats.indexOf(DIMS.booths[i].cat) !== filter.cat); });
   sel.value = String(filter.booth);
+  sel.disabled = isBoardgameCompetition();
+  sel.closest('span').hidden = isBoardgameCompetition();
   document.querySelectorAll('#catSeg button').forEach(b => b.setAttribute('aria-pressed', String(Number(b.dataset.cat) === filter.cat)));
   applyFilter();
   try { localStorage.setItem('bgf-filter', JSON.stringify(filter)); } catch (e) {}
@@ -453,7 +459,7 @@ function setFilter(patch) {
 function init() {
   document.getElementById('src').textContent = `자료: ${RAW.meta.source}`;
   const seg = document.getElementById('catSeg');
-  seg.innerHTML = `<button type="button" id="catAll" data-cat="-1" aria-pressed="true">전체</button>` + DIMS.cats.map((c, i) => `<button type="button" data-cat="${i}" aria-pressed="false">${c}</button>`).join('');
+  seg.innerHTML = `<button type="button" id="catAll" data-cat="-1" aria-pressed="true">전체</button>` + DIMS.cats.map((c, i) => `<button type="button" data-cat="${i}" aria-pressed="false">${c}</button>`).join('') + `<button type="button" data-cat="${BOARDGAME_COMPETITION_CAT}" aria-pressed="false">보드게임 대회</button>`;
   seg.addEventListener('click', e => { const b = e.target.closest('button'); if (b) setFilter({ cat: Number(b.dataset.cat) }); });
   const sel = document.getElementById('boothSel');
   sel.innerHTML = '<option value="-1">전체 부스</option>' + DIMS.booths.map((b, i) => `<option value="${i}">${b.name}</option>`).join('');
@@ -465,7 +471,7 @@ function init() {
   document.getElementById('btnTable').addEventListener('click', e => { tableOn = !tableOn; e.currentTarget.setAttribute('aria-pressed', tableOn); e.currentTarget.textContent = tableOn ? '표 숨기기' : '표 보기'; document.getElementById('tablewrap').hidden = !tableOn; });
   document.getElementById('btnPng').addEventListener('click', savePng);
   let first = 'boothDetail', f = {}; try { first = localStorage.getItem('bgf-view') || 'boothDetail'; f = JSON.parse(localStorage.getItem('bgf-filter') || '{}'); } catch (e) {}
-  Object.assign(filter, { cat: Number.isInteger(f.cat) && f.cat < DIMS.cats.length ? f.cat : -1, booth: Number.isInteger(f.booth) && f.booth < DIMS.booths.length ? f.booth : -1 });
+  Object.assign(filter, { cat: Number.isInteger(f.cat) && f.cat <= BOARDGAME_COMPETITION_CAT ? f.cat : -1, booth: Number.isInteger(f.booth) && f.booth < DIMS.booths.length ? f.booth : -1 });
   current = VIEWS.find(v => v.id === first && v.id) || VIEWS[1];
   setFilter({});
   matchMedia('(prefers-color-scheme: dark)').addEventListener('change', () => show(current.id));
@@ -473,7 +479,7 @@ function init() {
 }
 function toast(msg) { const t = document.createElement('div'); t.className = 'toast'; t.textContent = msg; document.body.appendChild(t); setTimeout(() => t.remove(), 2200); }
 async function savePng() {
-  const el = document.getElementById('capture'); const title = current.title;
+  const el = document.getElementById('capture'); const title = document.getElementById('ptitle').textContent;
   const wrap = document.createElement('div'); wrap.style.cssText = `background:${css('--surface')};padding:20px 24px;width:${el.offsetWidth + 48}px;font-family:${getComputedStyle(document.body).fontFamily}`;
   wrap.innerHTML = `<div style="font-size:18px;font-weight:700;color:${css('--ink')};margin-bottom:10px">${title}</div>`;
   const clone = el.cloneNode(true); wrap.appendChild(clone);
