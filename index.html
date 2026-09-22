@@ -1,3 +1,4 @@
+<meta charset="utf-8">
 <title>보드게임대축제 참여 분석</title>
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans+KR:wght@400;500;600;700&display=swap">
 <style>
@@ -226,9 +227,16 @@ function applyFilter() {
 function filterLabel() { const p = []; if (filter.cat >= 0) p.push(DIMS.cats[filter.cat]); if (filter.booth >= 0) p.push(DIMS.booths[filter.booth].name); return p.length ? ` · ${p.join(' · ')}` : ''; }
 
 /* ---------- 뷰 정의 ---------- */
+const BOARDGAME_UNIQUE = {
+  grades: ['1학년', '2학년', '3학년', '4학년', '5학년', '6학년'],
+  male: [18, 14, 14, 14, 15, 11],
+  female: [11, 13, 6, 12, 13, 4],
+};
 const VIEWS = [
   { grp: '부스 상세' },
   { id: 'boothDetail', title: '부스 상세', desc: '시간대별·연령별·성별 참여를 한 화면에. 아래에서 부스를 고르면 그 부스만, 전체를 고르면 모든 부스 합계를 보여줍니다.', render: renderBoothDetail },
+  { grp: '보드게임' },
+  { id: 'boardgameUnique', title: '보드게임', desc: '학년별·성별 고유 참가자 수. 동일 참가자는 한 명으로 계산하며, 상단의 부스 필터와는 별도 집계입니다.', standalone: true, render: renderBoardgameUnique },
   { grp: '기본 현황' },
   { id: 'slot', title: '시간대별 참여 건수', desc: '참여한 시간 기준, 30분 단위. 예약은 체험 시간, 현장 등록은 부스 등록 시각. 운영 전·점심시간(12~13시)에 미리 등록한 경우는 09:00·13:00으로 셈.',
     opts: [['stack', '누적 (현장/예약)'], ['total', '합계만']], render: renderSlot },
@@ -357,6 +365,31 @@ function renderGender(area) {
   const [box, c] = canvas(340); area.appendChild(box); chart = genderBars(c); const g = D.genderByGroup;
   return { note: '성별 미기재 건 제외' + filterLabel(), table: table(['연령 구간', ...g.cols, '여아 비율 %'], g.rows.map((r, i) => [r, ...g.values[i], pct(g.values[i][1], g.values[i][0] + g.values[i][1]).toFixed(0)])) };
 }
+function renderBoardgameUnique(area) {
+  const b = BOARDGAME_UNIQUE;
+  const totals = b.grades.map((_, i) => b.male[i] + b.female[i]);
+  const maleTotal = b.male.reduce((a, v) => a + v, 0), femaleTotal = b.female.reduce((a, v) => a + v, 0);
+  const grandTotal = maleTotal + femaleTotal;
+  const [box, c] = canvas(380); area.appendChild(box);
+  chart = new Chart(c, {
+    type: 'bar',
+    data: { labels: b.grades, datasets: [
+      { label: '남', data: b.male, backgroundColor: css('--s1'), borderRadius: 4 },
+      { label: '여', data: b.female, backgroundColor: css('--s2'), borderRadius: 4 },
+    ] },
+    options: baseOptions({
+      scales: {
+        x: { stacked: true, grid: { display: false }, border: { color: css('--line-strong') } },
+        y: { stacked: true, grid: { color: css('--line') }, border: { display: false }, beginAtZero: true, ticks: { precision: 0 } },
+      },
+      plugins: { tooltip: { callbacks: { footer: (it) => '합계 ' + fmt(totals[it[0].dataIndex]) + '명' } } },
+    }),
+  });
+  const rows = b.grades.map((grade, i) => [grade, b.male[i], b.female[i], totals[i], pct(b.female[i], totals[i]).toFixed(1)]);
+  rows.push(['합계', maleTotal, femaleTotal, grandTotal, pct(femaleTotal, grandTotal).toFixed(1)]);
+  return { note: `고유 참가자 ${fmt(grandTotal)}명 · 남 ${fmt(maleTotal)}명 · 여 ${fmt(femaleTotal)}명`,
+           table: table(['학년', '남', '여', '고유 참가자', '여학생 비율 %'], rows) };
+}
 function renderBoothDetail(area) {
   const b = filter.booth >= 0 ? DIMS.booths[filter.booth] : null;
   const list = DIMS.booths.map((x, i) => [x, i]).filter(([x]) => filter.cat < 0 || DIMS.cats.indexOf(x.cat) === filter.cat);
@@ -375,7 +408,10 @@ function renderBoothDetail(area) {
 function show(id) {
   current = VIEWS.find(v => v.id === id); killCharts();
   document.querySelectorAll('#nav button').forEach(b => b.setAttribute('aria-current', b.dataset.id === id ? 'true' : 'false'));
-  const suffix = filter.booth >= 0 && current.id !== 'boothDetail' ? ` — ${DIMS.booths[filter.booth].name}` : filter.cat >= 0 ? ` — ${DIMS.cats[filter.cat]}` : '';
+  document.querySelector('.filters').hidden = !!current.standalone;
+  document.getElementById('src').textContent = current.standalone ? '자료: 보드게임 고유 참가자 집계' : `자료: ${RAW.meta.source}`;
+  renderKpis();
+  const suffix = current.standalone ? '' : filter.booth >= 0 && current.id !== 'boothDetail' ? ` — ${DIMS.booths[filter.booth].name}` : filter.cat >= 0 ? ` — ${DIMS.cats[filter.cat]}` : '';
   document.getElementById('ptitle').textContent = current.title + suffix;
   document.getElementById('pdesc').textContent = current.desc;
   const o = document.getElementById('opts'); o.innerHTML = '';
@@ -384,15 +420,21 @@ function show(id) {
     o.querySelectorAll('input').forEach(i => i.addEventListener('change', () => { opt[id] = i.value; show(id); })); }
   const area = document.getElementById('chartArea'); area.innerHTML = '';
   let r;
-  try { r = D.total ? current.render(area) : empty(area, '해당 조건에 데이터가 없습니다.'); }
+  try { r = current.standalone || D.total ? current.render(area) : empty(area, '해당 조건에 데이터가 없습니다.'); }
   catch (e) { r = empty(area, '차트를 그리지 못했습니다: ' + (e && e.message || e) + ' — 새로고침하거나 표 보기를 이용하세요.'); }
   document.getElementById('pnote').textContent = r.note || '';
   const tw = document.getElementById('tablewrap'); tw.innerHTML = r.table || ''; tw.hidden = !tableOn;
   try { localStorage.setItem('bgf-view', id); } catch (e) {}
 }
 function renderKpis() {
-  const k = [['참여 건수', fmt(D.total), '건'], ['고유 참가자', fmt(D.unique), '명'], ['부스', D.boothsActive, '곳']];
-  if (filter.cat < 0 && filter.booth < 0) k.splice(2, 0, ['가족(연락처) 수', fmt(RAW.meta.families), '가족']);
+  let k;
+  if (current && current.id === 'boardgameUnique') {
+    const male = BOARDGAME_UNIQUE.male.reduce((a, v) => a + v, 0), female = BOARDGAME_UNIQUE.female.reduce((a, v) => a + v, 0);
+    k = [['고유 참가자', fmt(male + female), '명'], ['남', fmt(male), '명'], ['여', fmt(female), '명'], ['학년', BOARDGAME_UNIQUE.grades.length, '개']];
+  } else {
+    k = [['참여 건수', fmt(D.total), '건'], ['고유 참가자', fmt(D.unique), '명'], ['부스', D.boothsActive, '곳']];
+    if (filter.cat < 0 && filter.booth < 0) k.splice(2, 0, ['가족(연락처) 수', fmt(RAW.meta.families), '가족']);
+  }
   document.getElementById('kpis').innerHTML = k.map(([l, v, u]) => `<div class="kpi"><div class="l">${l}</div><div class="v">${v}<small>${u}</small></div></div>`).join('');
 }
 function setFilter(patch) {
