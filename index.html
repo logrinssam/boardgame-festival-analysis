@@ -455,8 +455,9 @@ function renderKpis() {
     const male = BOARDGAME_UNIQUE.male.reduce((a, v) => a + v, 0), female = BOARDGAME_UNIQUE.female.reduce((a, v) => a + v, 0);
     k = [['고유 참가자', fmt(male + female), '명'], ['남', fmt(male), '명'], ['여', fmt(female), '명'], ['학년', BOARDGAME_UNIQUE.grades.length, '개']];
   } else {
-    const extra = isOverall() && includeChocoInKpis ? CHOCO_PARTICIPATION : 0;
-    k = [['참여 건수', fmt(D.total + extra), '건'], ['고유 참가자', fmt(D.unique), '명'], ['부스', D.boothsActive, '곳']];
+    const competitionExtra = isOverall() ? boardgameCompetitionTotal() : 0;
+    const chocoExtra = isOverall() && includeChocoInKpis ? CHOCO_PARTICIPATION : 0;
+    k = [['참여 건수', fmt(D.total + competitionExtra + chocoExtra), '건'], ['고유 참가자', fmt(D.unique + competitionExtra), '명'], ['부스', D.boothsActive, '곳']];
     if (filter.cat < 0 && filter.booth < 0) k.splice(2, 0, ['가족(연락처) 수', fmt(RAW.meta.families), '가족']);
   }
   document.getElementById('kpis').innerHTML = k.map(([l, v, u]) => `<div class="kpi"><div class="l">${l}</div><div class="v">${v}<small>${u}</small></div></div>`).join('');
